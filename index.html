@@ -8,9 +8,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #282a36; color: #f8f8f2; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     #bar { height: 32px; padding: 0 12px; background: #21222c; border-bottom: 1px solid #44475a; display: flex; align-items: center; gap: 12px; font-size: 12px; flex-shrink: 0; }
-    #link { color: #bd93f9; cursor: pointer; user-select: none; }
-    #link:hover { text-decoration: underline; }
-    select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 6px; font-size: 12px; outline: none; border-radius: 3px; }
+select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 6px; font-size: 12px; outline: none; border-radius: 3px; }
     #status { margin-left: auto; font-size: 11px; }
     .on { color: #50fa7b; }
     .off { color: #6272a4; }
@@ -19,8 +17,7 @@
 </head>
 <body>
   <div id="bar">
-    <span id="link">copy link</span>
-    <select id="lang">
+<select id="lang">
       <option value="markdown">Markdown</option>
       <option value="org">Org-mode</option>
     </select>
@@ -30,17 +27,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
   <script>
-    const linkEl = document.getElementById('link');
     const langEl = document.getElementById('lang');
     const statusEl = document.getElementById('status');
 
-    linkEl.onclick = () => {
-      navigator.clipboard.writeText(location.href);
-      linkEl.textContent = 'copied!';
-      setTimeout(() => linkEl.textContent = 'copy link', 1500);
-    };
-
-    let editor, model, ws;
+let editor, model, ws;
     let mute = false;
 
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' } });
