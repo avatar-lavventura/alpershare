@@ -7,4 +7,3 @@ services:
     envVars:
       - key: PORT
         generateValue: false
-      - key: ROOM_ID
