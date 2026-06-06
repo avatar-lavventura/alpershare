@@ -13,6 +13,7 @@ from urllib.parse import urlparse, parse_qs
 from aiohttp import web, WSMsgType
 
 PORT = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 3000))
+ROOM_ID = os.environ.get("ROOM_ID", "")
 HTML = (Path(__file__).parent / "index.html").read_bytes()
 
 rooms: dict[str, dict] = {}
@@ -26,6 +27,8 @@ def get_room(room_id: str) -> dict:
 
 async def handler(request):
     if request.headers.get("Upgrade", "").lower() != "websocket":
+        if ROOM_ID and not request.rel_url.query.get("room"):
+            raise web.HTTPFound(f"/?room={ROOM_ID}")
         return web.Response(body=HTML, content_type="text/html")
     return await ws_handler(request)
 
