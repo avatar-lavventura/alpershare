@@ -27,14 +27,12 @@ def get_room(room_id: str) -> dict:
 
 async def handler(request):
     if request.headers.get("Upgrade", "").lower() != "websocket":
-        if ROOM_ID and not request.rel_url.query.get("room"):
-            raise web.HTTPFound(f"/?room={ROOM_ID}")
         return web.Response(body=HTML, content_type="text/html")
     return await ws_handler(request)
 
 
 async def ws_handler(request):
-    room_id = request.rel_url.query.get("room", "default")
+    room_id = request.rel_url.query.get("room") or ROOM_ID or "default"
     r = get_room(room_id)
 
     ws = web.WebSocketResponse()
