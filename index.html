@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>alpershare</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #282a36; color: #f8f8f2; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    #bar { height: 32px; padding: 0 12px; background: #21222c; border-bottom: 1px solid #44475a; display: flex; align-items: center; gap: 12px; font-size: 12px; flex-shrink: 0; }
+    #link { color: #bd93f9; cursor: pointer; user-select: none; }
+    #link:hover { text-decoration: underline; }
+    select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 6px; font-size: 12px; outline: none; border-radius: 3px; }
+    #status { margin-left: auto; font-size: 11px; }
+    .on { color: #50fa7b; }
+    .off { color: #6272a4; }
+    #editor { flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <span id="link">copy link</span>
+    <select id="lang">
+      <option value="markdown">Markdown</option>
+      <option value="org">Org-mode</option>
+    </select>
+    <span id="status" class="off">connecting</span>
+  </div>
+  <div id="editor"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
+  <script>
+    const linkEl = document.getElementById('link');
+    const langEl = document.getElementById('lang');
+    const statusEl = document.getElementById('status');
+
+    linkEl.onclick = () => {
+      navigator.clipboard.writeText(location.href);
+      linkEl.textContent = 'copied!';
+      setTimeout(() => linkEl.textContent = 'copy link', 1500);
+    };
+
+    let editor, model, ws;
+    let mute = false;
+
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' } });
+    require(['vs/editor/editor.main'], () => {
+      monaco.languages.register({ id: 'org' });
+      monaco.languages.setMonarchTokensProvider('org', {
+        tokenizer: {
+          root: [
+            // Headings
+            [/^\*{1,8} .+$/, 'org.heading'],
+            // Keyword lines: #+TITLE, #+BEGIN_SRC, etc.
+            [/^#\+[A-Z_]+.*$/, 'org.keyword'],
+            // Comment lines
+            [/^#(?!\+).+$/, 'comment'],
+            // TODO keywords inline
+            [/\b(TODO|DONE|FIXME|WAITING|CANCELLED|NEXT)\b/, 'org.todo'],
+            // Tags at end of heading :tag:tag:
+            [/:[a-zA-Z0-9_@#%:]+:/, 'org.tag'],
+            // Bold *word*
+            [/\*[^*\n]+\*/, 'org.bold'],
+            // Italic /word/
+            [/\/[^/\n]+\//, 'org.italic'],
+            // Underline _word_
+            [/_[^_\n]+_/, 'org.underline'],
+            // Code ~word~ or =word=
+            [/[~=][^~=\n]+[~=]/, 'org.code'],
+            // Strikethrough +word+
+            [/\+[^+\n]+\+/, 'org.strikethrough'],
+            // Links [[url][desc]] or [[url]]
+            [/\[\[.*?\]\]/, 'org.link'],
+            // Property drawers :PROPERTIES: / :END:
+            [/^:(PROPERTIES|END|LOGBOOK):$/, 'org.meta'],
+            [/^:[A-Z_]+:.*$/, 'org.meta'],
+            // Timestamps
+            [/[<[]\d{4}-\d{2}-\d{2}[^\]>]*[\]>]/, 'org.timestamp'],
+          ],
+        },
+      });
+      monaco.editor.defineTheme('dracula', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: '',             foreground: 'f8f8f2', background: '282a36' },
+          { token: 'comment',      foreground: '6272a4', fontStyle: 'italic' },
+          { token: 'keyword',      foreground: 'ff79c6' },
+          { token: 'string',       foreground: 'f1fa8c' },
+          { token: 'number',       foreground: 'bd93f9' },
+          { token: 'regexp',       foreground: 'f1fa8c' },
+          { token: 'type',         foreground: '8be9fd', fontStyle: 'italic' },
+          { token: 'class',        foreground: '50fa7b' },
+          { token: 'function',     foreground: '50fa7b' },
+          { token: 'variable',     foreground: 'f8f8f2' },
+          { token: 'constant',     foreground: 'bd93f9' },
+          { token: 'operator',     foreground: 'ff79c6' },
+          { token: 'delimiter',    foreground: 'f8f8f2' },
+          { token: 'tag',          foreground: 'ff79c6' },
+          { token: 'attribute.name',  foreground: '50fa7b' },
+          { token: 'attribute.value', foreground: 'f1fa8c' },
+          { token: 'org.heading',     foreground: 'bd93f9', fontStyle: 'bold' },
+          { token: 'org.keyword',     foreground: 'ff79c6' },
+          { token: 'org.todo',        foreground: 'ff5555', fontStyle: 'bold' },
+          { token: 'org.tag',         foreground: '6272a4' },
+          { token: 'org.bold',        foreground: 'f8f8f2', fontStyle: 'bold' },
+          { token: 'org.italic',      foreground: 'f8f8f2', fontStyle: 'italic' },
+          { token: 'org.underline',   foreground: 'f8f8f2', fontStyle: 'underline' },
+          { token: 'org.code',        foreground: '50fa7b' },
+          { token: 'org.strikethrough', foreground: '6272a4' },
+          { token: 'org.link',        foreground: '8be9fd' },
+          { token: 'org.meta',        foreground: 'ffb86c' },
+          { token: 'org.timestamp',   foreground: 'f1fa8c' },
+        ],
+        colors: {
+          'editor.background':            '#282a36',
+          'editor.foreground':            '#f8f8f2',
+          'editor.lineHighlightBackground': '#44475a',
+          'editor.selectionBackground':   '#44475a',
+          'editorCursor.foreground':      '#f8f8f2',
+          'editorLineNumber.foreground':  '#6272a4',
+          'editorLineNumber.activeForeground': '#f8f8f2',
+          'editor.findMatchBackground':   '#ffb86c50',
+          'editor.findMatchHighlightBackground': '#ffffff20',
+          'editorWidget.background':      '#21222c',
+          'editorWidget.border':          '#6272a4',
+          'input.background':             '#44475a',
+          'input.foreground':             '#f8f8f2',
+          'scrollbarSlider.background':   '#44475a80',
+          'scrollbarSlider.hoverBackground': '#6272a4',
+        },
+      });
+
+      editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '',
+        language: 'markdown',
+        theme: 'dracula',
+        fontSize: 14,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        padding: { top: 8 },
+      });
+
+      model = editor.getModel();
+
+      editor.onDidChangeModelContent(() => {
+        if (mute || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
+      });
+
+      langEl.onchange = () => {
+        monaco.editor.setModelLanguage(model, langEl.value);
+        if (ws && ws.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: 'lang', lang: langEl.value }));
+      };
+
+      connect();
+    });
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}`);
+
+      ws.onopen = () => { statusEl.textContent = 'live'; statusEl.className = 'on'; };
+      ws.onclose = () => { statusEl.textContent = 'offline'; statusEl.className = 'off'; setTimeout(connect, 2000); };
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'init' || msg.type === 'update') {
+          mute = true;
+          const pos = editor.getPosition();
+          model.setValue(msg.content);
+          if (msg.type === 'update') editor.setPosition(pos);
+          mute = false;
+        }
+        if ((msg.type === 'init' || msg.type === 'lang') && msg.lang) {
+          langEl.value = msg.lang;
+          monaco.editor.setModelLanguage(model, msg.lang);
+        }
+      };
+    }
+  </script>
+</body>
+</html>
