@@ -9,6 +9,8 @@
     body { background: #282a36; color: #f8f8f2; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     #bar { height: 32px; padding: 0 12px; background: #21222c; border-bottom: 1px solid #44475a; display: flex; align-items: center; gap: 12px; font-size: 12px; flex-shrink: 0; }
 select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 6px; font-size: 12px; outline: none; border-radius: 3px; }
+    button { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 8px; font-size: 12px; cursor: pointer; border-radius: 3px; }
+    button:hover { background: #6272a4; }
     #status { margin-left: auto; font-size: 11px; }
     .on { color: #50fa7b; }
     .off { color: #6272a4; }
@@ -21,6 +23,8 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
       <option value="markdown">Markdown</option>
       <option value="org">Org-mode</option>
     </select>
+    <button id="undo" title="Undo (Ctrl+Z)">&#8634;</button>
+    <button id="redo" title="Redo (Ctrl+Y)">&#8635;</button>
     <span id="status" class="off">connecting</span>
   </div>
   <div id="editor"></div>
@@ -134,6 +138,11 @@ let editor, model, ws;
 
       model = editor.getModel();
 
+      document.getElementById('undo').onclick = () => editor.trigger('toolbar', 'undo', null);
+      document.getElementById('redo').onclick = () => editor.trigger('toolbar', 'redo', null);
+
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
+
       editor.onDidChangeModelContent(() => {
         if (mute || !ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
@@ -158,17 +167,36 @@ let editor, model, ws;
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'init' || msg.type === 'update') {
-          mute = true;
-          const pos = editor.getPosition();
-          model.setValue(msg.content);
-          if (msg.type === 'update') editor.setPosition(pos);
-          mute = false;
+          applyRemoteContent(msg.content);
         }
         if ((msg.type === 'init' || msg.type === 'lang') && msg.lang) {
           langEl.value = msg.lang;
           monaco.editor.setModelLanguage(model, msg.lang);
         }
       };
+
+      // Apply remote content as a minimal edit instead of setValue(),
+      // so the local undo/redo stack survives incoming remote updates.
+      function applyRemoteContent(newContent) {
+        const oldContent = model.getValue();
+        if (oldContent === newContent) return;
+
+        const maxPrefix = Math.min(oldContent.length, newContent.length);
+        let prefix = 0;
+        while (prefix < maxPrefix && oldContent[prefix] === newContent[prefix]) prefix++;
+
+        const maxSuffix = Math.min(oldContent.length, newContent.length) - prefix;
+        let suffix = 0;
+        while (suffix < maxSuffix && oldContent[oldContent.length - 1 - suffix] === newContent[newContent.length - 1 - suffix]) suffix++;
+
+        const startPos = model.getPositionAt(prefix);
+        const endPos = model.getPositionAt(oldContent.length - suffix);
+        const insertText = newContent.slice(prefix, newContent.length - suffix);
+
+        mute = true;
+        model.applyEdits([{ range: monaco.Range.fromPositions(startPos, endPos), text: insertText }]);
+        mute = false;
+      }
     }
   </script>
 </body>
