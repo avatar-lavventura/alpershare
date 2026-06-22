@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>alpershare</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128221;</text></svg>">
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #282a36; color: #f8f8f2; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -25,6 +27,7 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     </select>
     <button id="undo" title="Undo (Ctrl+Z)">&#8634;</button>
     <button id="redo" title="Redo (Ctrl+Y)">&#8635;</button>
+    <button id="refresh" title="Refresh">&#128260;</button>
     <span id="status" class="off">connecting</span>
   </div>
   <div id="editor"></div>
@@ -140,6 +143,7 @@ let editor, model, ws;
 
       document.getElementById('undo').onclick = () => editor.trigger('toolbar', 'undo', null);
       document.getElementById('redo').onclick = () => editor.trigger('toolbar', 'redo', null);
+      document.getElementById('refresh').onclick = () => location.reload();
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
 
