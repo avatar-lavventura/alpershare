@@ -14,6 +14,7 @@ from aiohttp import web, WSMsgType
 
 PORT = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 3000))
 ROOM_ID = os.environ.get("ROOM_ID", "")
+HEALTH_TOKEN = os.environ.get("HEALTH_TOKEN", "")
 HTML = (Path(__file__).parent / "index.html").read_bytes()
 
 rooms: dict[str, dict] = {}
@@ -73,9 +74,15 @@ async def html_handler(request):
     return web.Response(body=HTML, content_type="text/html")
 
 
+async def health_handler(request):
+    return web.Response(text="ok")
+
+
 app = web.Application()
 app.router.add_get("/", handler)
 app.router.add_get("/index.html", html_handler)
+if HEALTH_TOKEN:
+    app.router.add_get(f"/health-{HEALTH_TOKEN}", health_handler)
 
 if __name__ == "__main__":
     print(f"codeshare running  ->  http://localhost:{PORT}")
