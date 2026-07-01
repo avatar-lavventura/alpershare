@@ -3,40 +3,64 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-const state = { content: '', lang: 'markdown' };
-const clients = new Set();
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const ROOM_ID = process.env.ROOM_ID || '';
+const HTML = fs.readFileSync(path.join(__dirname, 'index.html'));
 
-function broadcast(sender, msg) {
+const rooms = new Map();
+
+function getRoom(roomId) {
+  let r = rooms.get(roomId);
+  if (!r) {
+    r = { content: '', lang: 'markdown', clients: new Set() };
+    rooms.set(roomId, r);
+  }
+  return r;
+}
+
+function broadcast(room, sender, msg) {
   const data = JSON.stringify(msg);
-  for (const c of clients) {
+  for (const c of room.clients) {
     if (c !== sender && c.readyState === 1) c.send(data);
   }
 }
 
 const server = http.createServer((req, res) => {
+  const room = new URL(req.url, `http://${req.headers.host}`).searchParams.get('room');
+  if (ROOM_ID && room !== ROOM_ID) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
   res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(fs.readFileSync(path.join(__dirname, 'index.html')));
+  res.end(HTML);
 });
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws) => {
-  clients.add(ws);
-  ws.send(JSON.stringify({ type: 'init', content: state.content, lang: state.lang }));
+wss.on('connection', (ws, req) => {
+  const roomId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('room') || 'default';
+  if (ROOM_ID && roomId !== ROOM_ID) {
+    ws.close(1008, 'forbidden');
+    return;
+  }
+  const room = getRoom(roomId);
+  room.clients.add(ws);
+  ws.send(JSON.stringify({ type: 'init', content: room.content, lang: room.lang }));
 
   ws.on('message', (data) => {
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
     if (msg.type === 'update') {
-      state.content = msg.content;
-      broadcast(ws, { type: 'update', content: msg.content });
+      room.content = msg.content;
+      broadcast(room, ws, { type: 'update', content: msg.content });
     } else if (msg.type === 'lang') {
-      state.lang = msg.lang;
-      broadcast(ws, { type: 'lang', lang: msg.lang });
+      room.lang = msg.lang;
+      broadcast(room, ws, { type: 'lang', lang: msg.lang });
     }
   });
 
-  ws.on('close', () => clients.delete(ws));
+  ws.on('close', () => room.clients.delete(ws));
 });
 
-server.listen(3000, () => console.log('http://localhost:3000'));
+server.listen(PORT, () => console.log(`http://localhost:${PORT}`));
