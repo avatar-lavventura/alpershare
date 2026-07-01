@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ROOM_ID = process.env.ROOM_ID || '';
+const HEALTH_TOKEN = process.env.HEALTH_TOKEN || '';
 const HTML = fs.readFileSync(path.join(__dirname, 'index.html'));
 
 const rooms = new Map();
@@ -26,6 +27,12 @@ function broadcast(room, sender, msg) {
 }
 
 const server = http.createServer((req, res) => {
+  const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+  if (HEALTH_TOKEN && pathname === `/health-${HEALTH_TOKEN}`) {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+    return;
+  }
   const room = new URL(req.url, `http://${req.headers.host}`).searchParams.get('room');
   if (ROOM_ID && room !== ROOM_ID) {
     res.writeHead(404);
