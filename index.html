@@ -163,7 +163,8 @@ let editor, model, ws;
 
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      ws = new WebSocket(`${proto}://${location.host}`);
+      const room = new URLSearchParams(location.search).get('room') || '';
+      ws = new WebSocket(`${proto}://${location.host}/?room=${encodeURIComponent(room)}`);
 
       ws.onopen = () => { statusEl.textContent = 'live'; statusEl.className = 'on'; };
       ws.onclose = () => { statusEl.textContent = 'offline'; statusEl.className = 'off'; setTimeout(connect, 2000); };

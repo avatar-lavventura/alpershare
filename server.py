@@ -35,6 +35,8 @@ async def handler(request):
 
 async def ws_handler(request):
     room_id = request.rel_url.query.get("room", "default")
+    if ROOM_ID and room_id != ROOM_ID:
+        raise web.HTTPNotFound()
     r = get_room(room_id)
 
     ws = web.WebSocketResponse()
