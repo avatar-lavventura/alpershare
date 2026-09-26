@@ -70,4 +70,14 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => room.clients.delete(ws));
 });
 
+// keep proxies from idling out sockets; terminate ones that stop answering
+setInterval(() => {
+  for (const c of wss.clients) {
+    if (c.isAlive === false) { c.terminate(); continue; }
+    c.isAlive = false;
+    c.ping();
+  }
+}, 20000);
+wss.on('connection', (ws) => { ws.isAlive = true; ws.on('pong', () => { ws.isAlive = true; }); });
+
 server.listen(PORT, () => console.log(`http://localhost:${PORT}`));
