@@ -29,7 +29,6 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     <button id="undo" title="Undo (Ctrl+Z)">&#8634;</button>
     <button id="redo" title="Redo (Ctrl+Y)">&#8635;</button>
     <button id="refresh" title="Refresh">&#128260;</button>
-    <button id="emacs" title="Toggle Emacs keybindings">emacs: on</button>
     <span id="typing"></span>
     <span id="status" class="off">connecting</span>
   </div>
@@ -119,7 +118,7 @@ let editor, model, ws, retry = 0, typedAt = 0;
           'editor.foreground':            '#f8f8f2',
           'editor.lineHighlightBackground': '#44475a',
           'editor.selectionBackground':   '#44475a',
-          'editorCursor.foreground':      '#f8f8f2',
+          'editorCursor.foreground':      '#ffffff',
           'editorLineNumber.foreground':  '#6272a4',
           'editorLineNumber.activeForeground': '#f8f8f2',
           'editor.findMatchBackground':   '#ffb86c50',
@@ -162,15 +161,7 @@ let editor, model, ws, retry = 0, typedAt = 0;
       document.getElementById('redo').onclick = () => editor.trigger('toolbar', 'redo', null);
       document.getElementById('refresh').onclick = () => location.reload();
 
-      // dispose() leaves an instance unusable, so each "on" builds a fresh one
-      const emacsBtn = document.getElementById('emacs');
-      let emacs = new MonacoEmacs.EmacsExtension(editor);
-      emacs.start();
-      emacsBtn.onclick = () => {
-        if (emacs) { emacs.dispose(); emacs = null; }
-        else { emacs = new MonacoEmacs.EmacsExtension(editor); emacs.start(); }
-        emacsBtn.textContent = `emacs: ${emacs ? 'on' : 'off'}`;
-      };
+      new MonacoEmacs.EmacsExtension(editor).start();
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {});
