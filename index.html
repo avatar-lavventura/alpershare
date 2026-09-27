@@ -152,6 +152,12 @@ let editor, model, ws, retry = 0, typedAt = 0;
 
       model = editor.getModel();
 
+      const inputArea = editor.getDomNode().querySelector('textarea');
+      inputArea.setAttribute('spellcheck', 'false');
+      inputArea.setAttribute('autocorrect', 'off');
+      inputArea.setAttribute('autocapitalize', 'off');
+      inputArea.setAttribute('autocomplete', 'off');
+
       document.getElementById('undo').onclick = () => editor.trigger('toolbar', 'undo', null);
       document.getElementById('redo').onclick = () => editor.trigger('toolbar', 'redo', null);
       document.getElementById('refresh').onclick = () => location.reload();
@@ -167,6 +173,7 @@ let editor, model, ws, retry = 0, typedAt = 0;
       };
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {});
 
       editor.onDidChangeModelContent(() => {
         if (mute) return;
