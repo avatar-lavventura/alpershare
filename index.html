@@ -13,7 +13,8 @@
 select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 6px; font-size: 12px; outline: none; border-radius: 3px; }
     button { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding: 2px 8px; font-size: 12px; cursor: pointer; border-radius: 3px; }
     button:hover { background: #6272a4; }
-    #status { margin-left: auto; font-size: 11px; }
+    #typing { margin-left: auto; font-size: 11px; color: #f1fa8c; }
+    #status { font-size: 11px; }
     .on { color: #50fa7b; }
     .off { color: #6272a4; }
     #editor { flex: 1; }
@@ -28,6 +29,7 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     <button id="undo" title="Undo (Ctrl+Z)">&#8634;</button>
     <button id="redo" title="Redo (Ctrl+Y)">&#8635;</button>
     <button id="refresh" title="Refresh">&#128260;</button>
+    <span id="typing"></span>
     <span id="status" class="off">connecting</span>
   </div>
   <div id="editor"></div>
@@ -36,6 +38,8 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
   <script>
     const langEl = document.getElementById('lang');
     const statusEl = document.getElementById('status');
+    const typingEl = document.getElementById('typing');
+    let typingTimer;
 
 let editor, model, ws;
     let mute = false;
@@ -173,6 +177,11 @@ let editor, model, ws;
         const msg = JSON.parse(e.data);
         if (msg.type === 'init' || msg.type === 'update') {
           applyRemoteContent(msg.content);
+        }
+        if (msg.type === 'update') {
+          typingEl.textContent = 'typing...';
+          clearTimeout(typingTimer);
+          typingTimer = setTimeout(() => { typingEl.textContent = ''; }, 1500);
         }
         if ((msg.type === 'init' || msg.type === 'lang') && msg.lang) {
           langEl.value = msg.lang;
