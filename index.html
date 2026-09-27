@@ -163,6 +163,7 @@ let editor, model, ws, retry = 0, typedAt = 0;
       document.getElementById('refresh').onclick = () => location.reload();
 
       new MonacoEmacs.EmacsExtension(editor).start();
+      editor.updateOptions({ cursorBlinking: 'solid' }); // emacs.start() forces blinking back on
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {});
