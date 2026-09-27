@@ -26,11 +26,17 @@ def get_room(room_id: str) -> dict:
     return rooms[room_id]
 
 
+def page():
+    r = web.Response(body=HTML, content_type="text/html")
+    r.enable_compression()
+    return r
+
+
 async def handler(request):
     if request.headers.get("Upgrade", "").lower() != "websocket":
         if ROOM_ID and request.rel_url.query.get("room") != ROOM_ID:
             raise web.HTTPNotFound()
-        return web.Response(body=HTML, content_type="text/html")
+        return page()
     return await ws_handler(request)
 
 
@@ -71,7 +77,7 @@ async def ws_handler(request):
 
 
 async def html_handler(request):
-    return web.Response(body=HTML, content_type="text/html")
+    return page()
 
 
 async def health_handler(request):
