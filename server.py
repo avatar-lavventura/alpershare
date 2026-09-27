@@ -9,8 +9,8 @@ import json
 import os
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
-from aiohttp import web, WSMsgType
+
+from aiohttp import WSMsgType, web
 
 PORT = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 3000))
 ROOM_ID = os.environ.get("ROOM_ID", "")
