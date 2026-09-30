@@ -58,7 +58,9 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (data) => {
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
-    if (msg.type === 'update') {
+    if (msg.type === 'ping') {
+      ws.send('{"type":"pong"}');
+    } else if (msg.type === 'update') {
       room.content = msg.content;
       broadcast(room, ws, { type: 'update', content: msg.content });
     } else if (msg.type === 'lang') {

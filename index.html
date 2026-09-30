@@ -41,7 +41,7 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     const typingEl = document.getElementById('typing');
     let typingTimer;
 
-let editor, model, ws, retry = 0, typedAt = 0;
+let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
     let mute = false;
 
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' } });
@@ -181,6 +181,14 @@ let editor, model, ws, retry = 0, typedAt = 0;
       connect();
     });
 
+    // half-open sockets (sleep, network switch) stay OPEN forever; no pong since last ping = dead, reconnect
+    setInterval(() => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (pingAt > lastRecv) { ws.onclose = ws.onmessage = null; ws.close(); connect(); return; }
+      pingAt = Date.now();
+      ws.send('{"type":"ping"}');
+    }, 10000);
+
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const room = new URLSearchParams(location.search).get('room') || '';
@@ -190,8 +198,14 @@ let editor, model, ws, retry = 0, typedAt = 0;
       ws.onclose = () => { statusEl.textContent = 'offline'; statusEl.className = 'off'; setTimeout(connect, Date.now() - typedAt < 36e5 ? 2000 : Math.min(60000, 2000 * 2 ** retry++)); };
 
       ws.onmessage = (e) => {
+        const since = lastRecv;
+        lastRecv = Date.now();
         const msg = JSON.parse(e.data);
-        if (msg.type === 'init' || msg.type === 'update') {
+        // typed since the server last answered: server may not have our edits, push ours instead of reverting
+        // ponytail: last writer wins, a peer's offline edits get overwritten; CRDT (yjs) if that matters
+        if (msg.type === 'init' && typedAt > since && model.getValue() !== msg.content) {
+          ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
+        } else if (msg.type === 'init' || msg.type === 'update') {
           applyRemoteContent(msg.content);
         }
         if (msg.type === 'update') {

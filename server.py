@@ -58,6 +58,9 @@ async def ws_handler(request):
                 data = json.loads(msg.data)
             except Exception:
                 continue
+            if data.get("type") == "ping":
+                await ws.send_str('{"type":"pong"}')
+                continue
             if data.get("type") == "update":
                 r["content"] = data.get("content", "")
                 out = json.dumps({"type": "update", "content": r["content"]})
