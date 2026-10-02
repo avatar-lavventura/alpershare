@@ -29,6 +29,7 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     <button id="undo" title="Undo (Ctrl+Z)">&#8634;</button>
     <button id="redo" title="Redo (Ctrl+Y)">&#8635;</button>
     <button id="refresh" title="Refresh">&#128260;</button>
+    <button id="push" title="Push my text to everyone">&#8593;</button>
     <span id="typing"></span>
     <span id="status" class="off">connecting</span>
   </div>
@@ -161,6 +162,11 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
       document.getElementById('undo').onclick = () => editor.trigger('toolbar', 'undo', null);
       document.getElementById('redo').onclick = () => editor.trigger('toolbar', 'redo', null);
       document.getElementById('refresh').onclick = () => location.reload();
+      // counts as typing, so if the socket is down or dead the next init pushes ours
+      document.getElementById('push').onclick = () => {
+        typedAt = Date.now();
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
+      };
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {});
