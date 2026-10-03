@@ -170,6 +170,7 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => editor.trigger('keyboard', 'undo', null));
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {});
+      editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyG, () => {}); // Mac: Ctrl+G is go-to-line
 
       editor.onDidChangeModelContent(() => {
         if (mute) return;
