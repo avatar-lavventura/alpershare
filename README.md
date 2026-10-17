@@ -11,6 +11,7 @@ It is meant for the small jobs: moving a snippet from your laptop to a remote bo
 - Emacs keybindings, toggled from the toolbar
 - Live sync over WebSocket, with a "typing..." hint when another window is editing
 - Separate rooms by URL: `/?room=standup` and `/?room=scratch` never see each other
+- Drop or paste images (up to 3 MB each, last 20 per room) into a shared thumbnail strip
 - Undo and redo buttons, and a connection status light
 - One small server, in Python or Node, your choice
 - Heartbeats keep the socket open behind proxies such as ngrok and Render
@@ -67,7 +68,7 @@ Both servers read the same environment variables.
 
 ## Limits
 
-- Text lives in server memory. Restarting the server clears every room.
+- Text and images live in server memory. Restarting the server clears every room.
 - The last edit wins. The whole document is sent on each change, so two people typing in the same spot at once will overwrite each other. It suits taking turns, not pair editing in real time.
 - Anyone who knows a room name can read and write it. Use `ROOM_ID` and HTTPS if the content matters.
 - The editor loads Monaco from the jsdelivr CDN, so the browser needs internet access.

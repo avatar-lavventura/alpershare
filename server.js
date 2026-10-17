@@ -13,7 +13,7 @@ const rooms = new Map();
 function getRoom(roomId) {
   let r = rooms.get(roomId);
   if (!r) {
-    r = { content: '', lang: 'markdown', clients: new Set() };
+    r = { content: '', lang: 'markdown', images: [], clients: new Set() };
     rooms.set(roomId, r);
   }
   return r;
@@ -43,7 +43,7 @@ const server = http.createServer((req, res) => {
   res.end(HTML);
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 }); // same limit as aiohttp's default
 
 wss.on('connection', (ws, req) => {
   const roomId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('room') || 'default';
@@ -53,7 +53,7 @@ wss.on('connection', (ws, req) => {
   }
   const room = getRoom(roomId);
   room.clients.add(ws);
-  ws.send(JSON.stringify({ type: 'init', content: room.content, lang: room.lang }));
+  ws.send(JSON.stringify({ type: 'init', content: room.content, lang: room.lang, images: room.images }));
 
   ws.on('message', (data) => {
     let msg;
@@ -66,6 +66,12 @@ wss.on('connection', (ws, req) => {
     } else if (msg.type === 'lang') {
       room.lang = msg.lang;
       broadcast(room, ws, { type: 'lang', lang: msg.lang });
+    } else if (msg.type === 'img' && typeof msg.data === 'string' && msg.data.startsWith('data:image/')) {
+      room.images = [...room.images, { id: msg.id, data: msg.data }].slice(-20);
+      broadcast(room, ws, { type: 'img', id: msg.id, data: msg.data });
+    } else if (msg.type === 'imgdel') {
+      room.images = room.images.filter(m => m.id !== msg.id);
+      broadcast(room, ws, { type: 'imgdel', id: msg.id });
     }
   });
 

@@ -18,6 +18,14 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     .on { color: #50fa7b; }
     .off { color: #6272a4; }
     #editor { flex: 1; }
+    #imgs { display: flex; gap: 6px; padding: 6px 12px; background: #21222c; border-bottom: 1px solid #44475a; overflow-x: auto; flex-shrink: 0; }
+    #imgs:empty { display: none; }
+    .thumb { position: relative; flex-shrink: 0; }
+    .thumb img { height: 64px; display: block; cursor: pointer; }
+    .thumb button { position: absolute; top: 0; right: 0; padding: 0 4px; }
+    #view { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center; z-index: 100; }
+    #view[hidden] { display: none; }
+    #view img { max-width: 95%; max-height: 95%; }
   </style>
 </head>
 <body>
@@ -33,7 +41,9 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     <span id="typing"></span>
     <span id="status" class="off">connecting</span>
   </div>
+  <div id="imgs"></div>
   <div id="editor"></div>
+  <div id="view" hidden onclick="this.hidden = true"><img></div>
 
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
   <script>
@@ -44,6 +54,53 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
 
 let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
     let mute = false;
+    let images = [];
+    const imgsEl = document.getElementById('imgs');
+    const viewEl = document.getElementById('view');
+
+    function renderImgs() {
+      imgsEl.replaceChildren(...images.map(({ id, data }) => {
+        const t = document.createElement('span');
+        t.className = 'thumb';
+        const img = new Image();
+        img.src = data;
+        img.onclick = () => { viewEl.firstChild.src = data; viewEl.hidden = false; };
+        const x = document.createElement('button');
+        x.textContent = '\u00d7';
+        x.onclick = () => { delImg(id); if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'imgdel', id })); };
+        t.append(img, x);
+        return t;
+      }));
+    }
+    function addImg(m) { images = [...images, m].slice(-20); renderImgs(); }
+    function delImg(id) { images = images.filter(m => m.id !== id); renderImgs(); }
+
+    // 3 MB file is ~4 MB as base64, the Python server's default message limit
+    function shareFile(f) {
+      if (!f.type.startsWith('image/')) return;
+      if (f.size > 3e6) return alert('Image too big (max 3 MB)');
+      const r = new FileReader();
+      r.onload = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return alert('Offline, image not shared');
+        const m = { id: Date.now().toString(36) + Math.random().toString(36).slice(2), data: r.result };
+        addImg(m);
+        ws.send(JSON.stringify({ type: 'img', ...m }));
+      };
+      r.readAsDataURL(f);
+    }
+    // capture phase so Monaco never sees image drops/pastes; text pastes and drags pass through
+    addEventListener('dragover', e => e.preventDefault(), true);
+    addEventListener('drop', e => {
+      if (!e.dataTransfer.files.length) return;
+      e.preventDefault(); e.stopPropagation();
+      [...e.dataTransfer.files].forEach(shareFile);
+    }, true);
+    addEventListener('paste', e => {
+      const files = [...e.clipboardData.files].filter(f => f.type.startsWith('image/'));
+      if (!files.length || e.clipboardData.getData('text/plain')) return;
+      e.preventDefault(); e.stopPropagation();
+      files.forEach(shareFile);
+    }, true);
 
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' } });
     require(['vs/editor/editor.main'], () => {
@@ -172,6 +229,15 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {});
       editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyG, () => {}); // Mac: Ctrl+G is go-to-line
 
+      // mouse drag past the end stops at the last non-whitespace char, so trailing blank lines are not copied
+      editor.onDidChangeCursorSelection(({ selection: s, source }) => {
+        if (source !== 'mouse' || s.isEmpty()) return;
+        const end = model.getPositionAt(model.getValue().trimEnd().length);
+        const clamp = p => end.isBefore(p) ? end : p;
+        const a = clamp(s.getSelectionStart()), b = clamp(s.getPosition());
+        if (!a.equals(s.getSelectionStart()) || !b.equals(s.getPosition())) editor.setSelection(monaco.Selection.fromPositions(a, b));
+      });
+
       editor.onDidChangeModelContent(() => {
         if (mute) return;
         typedAt = Date.now();
@@ -215,6 +281,9 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
         } else if (msg.type === 'init' || msg.type === 'update') {
           applyRemoteContent(msg.content);
         }
+        if (msg.type === 'init') { images = msg.images || []; renderImgs(); }
+        if (msg.type === 'img') addImg({ id: msg.id, data: msg.data });
+        if (msg.type === 'imgdel') delImg(msg.id);
         if (msg.type === 'update') {
           typingEl.textContent = 'typing...';
           clearTimeout(typingTimer);

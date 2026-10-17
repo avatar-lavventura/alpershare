@@ -22,7 +22,7 @@ rooms: dict[str, dict] = {}
 
 def get_room(room_id: str) -> dict:
     if room_id not in rooms:
-        rooms[room_id] = {"content": "", "lang": "markdown", "clients": set()}
+        rooms[room_id] = {"content": "", "lang": "markdown", "images": [], "clients": set()}
     return rooms[room_id]
 
 
@@ -50,7 +50,7 @@ async def ws_handler(request):
     await ws.prepare(request)
     r["clients"].add(ws)
 
-    await ws.send_json({"type": "init", "content": r["content"], "lang": r["lang"]})
+    await ws.send_json({"type": "init", "content": r["content"], "lang": r["lang"], "images": r["images"]})
 
     async for msg in ws:
         if msg.type == WSMsgType.TEXT:
@@ -67,6 +67,13 @@ async def ws_handler(request):
             elif data.get("type") == "lang":
                 r["lang"] = data.get("lang", "javascript")
                 out = json.dumps({"type": "lang", "lang": r["lang"]})
+            elif data.get("type") == "img" and str(data.get("data", "")).startswith("data:image/"):
+                img = {"id": data.get("id"), "data": data["data"]}
+                r["images"] = (r["images"] + [img])[-20:]
+                out = json.dumps({"type": "img", **img})
+            elif data.get("type") == "imgdel":
+                r["images"] = [m for m in r["images"] if m["id"] != data.get("id")]
+                out = json.dumps({"type": "imgdel", "id": data.get("id")})
             else:
                 continue
             for c in list(r["clients"]):
