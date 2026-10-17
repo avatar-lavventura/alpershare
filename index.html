@@ -75,10 +75,10 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
     function addImg(m) { images = [...images, m].slice(-20); renderImgs(); }
     function delImg(id) { images = images.filter(m => m.id !== id); renderImgs(); }
 
-    // 3 MB file is ~4 MB as base64, the Python server's default message limit
+    // 5 MB file is ~7 MB as base64, under the servers' 8 MB message limit
     function shareFile(f) {
       if (!f.type.startsWith('image/')) return;
-      if (f.size > 3e6) return alert('Image too big (max 3 MB)');
+      if (f.size > 5 * 1024 * 1024) return alert('Image too big (max 5 MB)');
       const r = new FileReader();
       r.onload = () => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return alert('Offline, image not shared');

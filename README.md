@@ -11,7 +11,7 @@ It is meant for the small jobs: moving a snippet from your laptop to a remote bo
 - Emacs keybindings, toggled from the toolbar
 - Live sync over WebSocket, with a "typing..." hint when another window is editing
 - Separate rooms by URL: `/?room=standup` and `/?room=scratch` never see each other
-- Drop or paste images (up to 3 MB each, last 20 per room) into a shared thumbnail strip
+- Drop or paste images (up to 5 MB each, last 20 per room) into a shared thumbnail strip
 - Undo and redo buttons, and a connection status light
 - One small server, in Python or Node, your choice
 - Heartbeats keep the socket open behind proxies such as ngrok and Render

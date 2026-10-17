@@ -46,7 +46,7 @@ async def ws_handler(request):
         raise web.HTTPNotFound()
     r = get_room(room_id)
 
-    ws = web.WebSocketResponse(heartbeat=20)  # keeps proxies from idling out, drops dead sockets
+    ws = web.WebSocketResponse(heartbeat=20, max_msg_size=8 * 1024 * 1024)  # 8 MB fits a 5 MB image as base64; heartbeat keeps proxies from idling out, drops dead sockets
     await ws.prepare(request)
     r["clients"].add(ws)
 

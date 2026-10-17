@@ -43,7 +43,7 @@ const server = http.createServer((req, res) => {
   res.end(HTML);
 });
 
-const wss = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 }); // same limit as aiohttp's default
+const wss = new WebSocketServer({ server, maxPayload: 8 * 1024 * 1024 }); // fits a 5 MB image as base64, same as server.py
 
 wss.on('connection', (ws, req) => {
   const roomId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('room') || 'default';
