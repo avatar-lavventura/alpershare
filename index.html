@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>alpershare</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128221;</text></svg>">
 
   <style>
@@ -52,28 +53,40 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; padding
     const typingEl = document.getElementById('typing');
     let typingTimer;
 
-let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
+let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0, sendTimer = null;
     let mute = false;
-    let images = [];
+    let early = []; // messages that arrive before Monaco is ready
+    const room = new URLSearchParams(location.search).get('room') || '';
     const imgsEl = document.getElementById('imgs');
     const viewEl = document.getElementById('view');
 
-    function renderImgs() {
-      imgsEl.replaceChildren(...images.map(({ id, data }) => {
-        const t = document.createElement('span');
-        t.className = 'thumb';
-        const img = new Image();
-        img.src = data;
-        img.onclick = () => { viewEl.firstChild.src = data; viewEl.hidden = false; };
-        const x = document.createElement('button');
-        x.textContent = '\u00d7';
-        x.onclick = () => { delImg(id); if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'imgdel', id })); };
-        t.append(img, x);
-        return t;
-      }));
+    const imgUrl = id => `/img/${encodeURIComponent(id)}?room=${encodeURIComponent(room)}`;
+    // one thumbnail per image; add and delete touch only that one, so the others are not decoded again
+    function thumb(id, src) {
+      const t = document.createElement('span');
+      t.className = 'thumb';
+      t.dataset.id = id;
+      const img = new Image();
+      img.src = src;
+      img.onclick = () => { viewEl.firstChild.src = src; viewEl.hidden = false; };
+      const x = document.createElement('button');
+      x.textContent = '\u00d7';
+      x.onclick = () => { delImg(id); if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'imgdel', id })); };
+      t.append(img, x);
+      return t;
     }
-    function addImg(m) { images = [...images, m].slice(-20); renderImgs(); }
-    function delImg(id) { images = images.filter(m => m.id !== id); renderImgs(); }
+    function setImgs(ids) { imgsEl.replaceChildren(...ids.slice(-20).map(id => thumb(id, imgUrl(id)))); }
+    function addImg(id, src) {
+      imgsEl.append(thumb(id, src));
+      while (imgsEl.children.length > 20) imgsEl.firstChild.remove();
+    }
+    function delImg(id) { [...imgsEl.children].find(t => t.dataset.id === id)?.remove(); }
+
+    // whole document, at most once per 50 ms, so fast typing does not send a copy per keystroke
+    function sendContent() {
+      sendTimer = null;
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
+    }
 
     // 5 MB file is ~7 MB as base64, under the servers' 8 MB message limit
     function shareFile(f) {
@@ -82,9 +95,9 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
       const r = new FileReader();
       r.onload = () => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return alert('Offline, image not shared');
-        const m = { id: Date.now().toString(36) + Math.random().toString(36).slice(2), data: r.result };
-        addImg(m);
-        ws.send(JSON.stringify({ type: 'img', ...m }));
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        addImg(id, r.result);
+        ws.send(JSON.stringify({ type: 'img', id, data: r.result }));
       };
       r.readAsDataURL(f);
     }
@@ -232,7 +245,9 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
       // mouse drag past the end stops at the last non-whitespace char, so trailing blank lines are not copied
       editor.onDidChangeCursorSelection(({ selection: s, source }) => {
         if (source !== 'mouse' || s.isEmpty()) return;
-        const end = model.getPositionAt(model.getValue().trimEnd().length);
+        let line = model.getLineCount();
+        while (line > 1 && !model.getLineLastNonWhitespaceColumn(line)) line--;
+        const end = new monaco.Position(line, Math.max(1, model.getLineLastNonWhitespaceColumn(line)));
         const clamp = p => end.isBefore(p) ? end : p;
         const a = clamp(s.getSelectionStart()), b = clamp(s.getPosition());
         if (!a.equals(s.getSelectionStart()) || !b.equals(s.getPosition())) editor.setSelection(monaco.Selection.fromPositions(a, b));
@@ -241,8 +256,7 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
       editor.onDidChangeModelContent(() => {
         if (mute) return;
         typedAt = Date.now();
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
+        if (!sendTimer) sendTimer = setTimeout(sendContent, 50);
       });
 
       langEl.onchange = () => {
@@ -251,8 +265,10 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
           ws.send(JSON.stringify({ type: 'lang', lang: langEl.value }));
       };
 
-      connect();
+      early.forEach(([msg, since]) => handle(msg, since));
+      early = null;
     });
+    connect(); // in parallel with loading Monaco
 
     // half-open sockets (sleep, network switch) stay OPEN forever; no pong since last ping = dead, reconnect
     setInterval(() => {
@@ -264,7 +280,6 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
 
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const room = new URLSearchParams(location.search).get('room') || '';
       ws = new WebSocket(`${proto}://${location.host}/?room=${encodeURIComponent(room)}`);
 
       ws.onopen = () => { retry = 0; statusEl.textContent = 'live'; statusEl.className = 'on'; };
@@ -274,49 +289,54 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0;
         const since = lastRecv;
         lastRecv = Date.now();
         const msg = JSON.parse(e.data);
-        // typed since the server last answered: server may not have our edits, push ours instead of reverting
-        // ponytail: last writer wins, a peer's offline edits get overwritten; CRDT (yjs) if that matters
-        if (msg.type === 'init' && typedAt > since && model.getValue() !== msg.content) {
-          ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
-        } else if (msg.type === 'init' || msg.type === 'update') {
-          applyRemoteContent(msg.content);
-        }
-        if (msg.type === 'init') { images = msg.images || []; renderImgs(); }
-        if (msg.type === 'img') addImg({ id: msg.id, data: msg.data });
-        if (msg.type === 'imgdel') delImg(msg.id);
-        if (msg.type === 'update') {
-          typingEl.textContent = 'typing...';
-          clearTimeout(typingTimer);
-          typingTimer = setTimeout(() => { typingEl.textContent = ''; }, 1500);
-        }
-        if ((msg.type === 'init' || msg.type === 'lang') && msg.lang) {
-          langEl.value = msg.lang;
-          monaco.editor.setModelLanguage(model, msg.lang);
-        }
+        if (early) early.push([msg, since]);
+        else handle(msg, since);
       };
+    }
 
-      // Apply remote content as a minimal edit instead of setValue(),
-      // so the local undo/redo stack survives incoming remote updates.
-      function applyRemoteContent(newContent) {
-        const oldContent = model.getValue();
-        if (oldContent === newContent) return;
-
-        const maxPrefix = Math.min(oldContent.length, newContent.length);
-        let prefix = 0;
-        while (prefix < maxPrefix && oldContent[prefix] === newContent[prefix]) prefix++;
-
-        const maxSuffix = Math.min(oldContent.length, newContent.length) - prefix;
-        let suffix = 0;
-        while (suffix < maxSuffix && oldContent[oldContent.length - 1 - suffix] === newContent[newContent.length - 1 - suffix]) suffix++;
-
-        const startPos = model.getPositionAt(prefix);
-        const endPos = model.getPositionAt(oldContent.length - suffix);
-        const insertText = newContent.slice(prefix, newContent.length - suffix);
-
-        mute = true;
-        model.applyEdits([{ range: monaco.Range.fromPositions(startPos, endPos), text: insertText }]);
-        mute = false;
+    function handle(msg, since) {
+      // typed since the server last answered: server may not have our edits, push ours instead of reverting
+      // ponytail: last writer wins, a peer's offline edits get overwritten; CRDT (yjs) if that matters
+      if (msg.type === 'init' && typedAt > since && model.getValue() !== msg.content) {
+        ws.send(JSON.stringify({ type: 'update', content: model.getValue() }));
+      } else if (msg.type === 'init' || msg.type === 'update') {
+        applyRemoteContent(msg.content);
       }
+      if (msg.type === 'init') setImgs((msg.images || []).map(m => m.id));
+      if (msg.type === 'img') addImg(msg.id, imgUrl(msg.id));
+      if (msg.type === 'imgdel') delImg(msg.id);
+      if (msg.type === 'update') {
+        typingEl.textContent = 'typing...';
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => { typingEl.textContent = ''; }, 1500);
+      }
+      if ((msg.type === 'init' || msg.type === 'lang') && msg.lang) {
+        langEl.value = msg.lang;
+        monaco.editor.setModelLanguage(model, msg.lang);
+      }
+    }
+
+    // Apply remote content as a minimal edit instead of setValue(),
+    // so the local undo/redo stack survives incoming remote updates.
+    function applyRemoteContent(newContent) {
+      const oldContent = model.getValue();
+      if (oldContent === newContent) return;
+
+      const maxPrefix = Math.min(oldContent.length, newContent.length);
+      let prefix = 0;
+      while (prefix < maxPrefix && oldContent[prefix] === newContent[prefix]) prefix++;
+
+      const maxSuffix = Math.min(oldContent.length, newContent.length) - prefix;
+      let suffix = 0;
+      while (suffix < maxSuffix && oldContent[oldContent.length - 1 - suffix] === newContent[newContent.length - 1 - suffix]) suffix++;
+
+      const startPos = model.getPositionAt(prefix);
+      const endPos = model.getPositionAt(oldContent.length - suffix);
+      const insertText = newContent.slice(prefix, newContent.length - suffix);
+
+      mute = true;
+      model.applyEdits([{ range: monaco.Range.fromPositions(startPos, endPos), text: insertText }]);
+      mute = false;
     }
   </script>
 </body>
