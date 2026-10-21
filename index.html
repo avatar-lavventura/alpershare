@@ -219,6 +219,11 @@ let editor, model, ws, retry = 0, typedAt = 0, lastRecv = 0, pingAt = 0, sendTim
         acceptSuggestionOnEnter: 'off',
         tabCompletion: 'off',
         parameterHints: { enabled: false },
+        // type exactly what was typed: no auto-inserted closing brackets, quotes or comment ends, no wrapping a selection
+        autoClosingBrackets: 'never',
+        autoClosingQuotes: 'never',
+        autoClosingComments: 'never',
+        autoSurround: 'never',
       });
 
       model = editor.getModel();
