@@ -1,12 +1,14 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ROOM_ID = process.env.ROOM_ID || '';
 const HEALTH_TOKEN = process.env.HEALTH_TOKEN || '';
 const HTML = fs.readFileSync(path.join(__dirname, 'index.html'));
+const HTML_GZ = zlib.gzipSync(HTML);
 
 const rooms = new Map();
 
@@ -19,6 +21,12 @@ function getRoom(roomId) {
   return r;
 }
 
+// data:image/png;base64,... -> { mime, body }, or null if malformed
+function decodeImg(data) {
+  const m = typeof data === 'string' && /^data:(image\/[\w.+-]+);base64,/.exec(data);
+  return m ? { mime: m[1], body: Buffer.from(data.slice(m[0].length), 'base64') } : null;
+}
+
 function broadcast(room, sender, msg) {
   const data = JSON.stringify(msg);
   for (const c of room.clients) {
@@ -27,19 +35,45 @@ function broadcast(room, sender, msg) {
 }
 
 const server = http.createServer((req, res) => {
-  const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
   if (HEALTH_TOKEN && pathname === `/health-${HEALTH_TOKEN}`) {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
     return;
   }
-  const room = new URL(req.url, `http://${req.headers.host}`).searchParams.get('room');
+  if (pathname.startsWith('/img/')) {
+    const roomId = url.searchParams.get('room') || 'default';
+    let id;
+    try { id = decodeURIComponent(pathname.slice(5)); } catch { id = null; }
+    const img = (!ROOM_ID || roomId === ROOM_ID) && rooms.get(roomId)?.images.find(m => m.id === id);
+    if (!img) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    // ids are never reused, so the browser may cache forever; CSP sandbox stops an uploaded SVG running script
+    res.writeHead(200, {
+      'Content-Type': img.mime,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(img.body);
+    return;
+  }
+  const room = url.searchParams.get('room');
   if (ROOM_ID && room !== ROOM_ID) {
     res.writeHead(404);
     res.end();
     return;
   }
-  res.writeHead(200, { 'Content-Type': 'text/html' });
+  if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+    res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding' });
+    res.end(HTML_GZ);
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html', 'Vary': 'Accept-Encoding' });
   res.end(HTML);
 });
 
@@ -53,10 +87,11 @@ wss.on('connection', (ws, req) => {
   }
   const room = getRoom(roomId);
   room.clients.add(ws);
-  ws.send(JSON.stringify({ type: 'init', content: room.content, lang: room.lang, images: room.images }));
+  // images go by id only; the browser fetches each from /img/<id> and can cache it
+  ws.send(JSON.stringify({ type: 'init', content: room.content, lang: room.lang, images: room.images.map(m => ({ id: m.id })) }));
 
   ws.on('message', (data) => {
-    let msg;
+    let msg, img;
     try { msg = JSON.parse(data); } catch { return; }
     if (msg.type === 'ping') {
       ws.send('{"type":"pong"}');
@@ -66,9 +101,9 @@ wss.on('connection', (ws, req) => {
     } else if (msg.type === 'lang') {
       room.lang = msg.lang;
       broadcast(room, ws, { type: 'lang', lang: msg.lang });
-    } else if (msg.type === 'img' && typeof msg.data === 'string' && msg.data.startsWith('data:image/')) {
-      room.images = [...room.images, { id: msg.id, data: msg.data }].slice(-20);
-      broadcast(room, ws, { type: 'img', id: msg.id, data: msg.data });
+    } else if (msg.type === 'img' && (img = decodeImg(msg.data))) {
+      room.images = [...room.images, { id: msg.id, ...img }].slice(-20);
+      broadcast(room, ws, { type: 'img', id: msg.id });
     } else if (msg.type === 'imgdel') {
       room.images = room.images.filter(m => m.id !== msg.id);
       broadcast(room, ws, { type: 'imgdel', id: msg.id });
